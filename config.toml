@@ -1,0 +1,13 @@
+# ECUST 电量统计配置文件
+
+[[dormitories]]
+name = "神秘528"
+url = "https://yktyd.ecust.edu.cn/epay/wxpage/wanxiao/eleresult;jsessionid=7E6D0779AB1536A9E6E22499BD990C01?sysid=1&roomid=528&areaid=3&buildid=20"
+warning_threshold = 10      # 报警阈值 (kWh)
+push_warning_only = false   # 是否仅在电量低时推送
+
+[[dormitories]]
+name = "快乐529"
+url = "https://yktyd.ecust.edu.cn/epay/wxpage/wanxiao/eleresult;jsessionid=7E6D0779AB1536A9E6E22499BD990C01?sysid=1&roomid=529&areaid=3&buildid=20"
+warning_threshold = 10      # 报警阈值 (kWh)
+push_warning_only = false   # 是否仅在电量低时推送

@@ -1,0 +1,46 @@
+# ECUST 电量统计配置文件示例
+# 复制此文件为 config.toml 并填写实际配置
+
+# ============================================================
+# 宿舍列表 - 支持两种配置方式
+# ============================================================
+
+# 方式一：使用 URL 直接导入 (推荐)
+[[dormitories]]
+name = "我的宿舍"
+url = "https://yktyd.ecust.edu.cn/WxRes.aspx?buildid=30&roomid=101"
+warning_threshold = 10      # 报警阈值 (kWh)
+push_warning_only = false   # 是否仅在电量低时推送
+
+# 方式二：分开配置 buildid 和 roomid
+[[dormitories]]
+name = "朋友宿舍"
+buildid = 35
+roomid = "202"
+warning_threshold = 15
+push_warning_only = true    # 仅在低电量时推送
+
+# ============================================================
+# 楼号映射参考 (奉贤校区)
+# ============================================================
+# buildid 27-46  -> 实际楼号 5-24
+# buildid 49-52  -> 实际楼号 25-28
+# 其他 buildid 保持原值
+# ============================================================
+
+# ============================================================
+# 推送配置 - 环境变量说明
+# ============================================================
+# 每个宿舍的 token 通过环境变量配置，命名规则：
+#
+#   PUSH_PLUS_TOKEN_{BUILDID}_{ROOMID}     - PushPlus Token
+#   TELEGRAM_BOT_TOKEN_{BUILDID}_{ROOMID}  - Telegram Bot Token
+#   TELEGRAM_USER_IDS_{BUILDID}_{ROOMID}   - Telegram User IDs (空格分隔)
+#
+# 示例：buildid=30, roomid=101 的宿舍
+#   PUSH_PLUS_TOKEN_30_101=xxx
+#   TELEGRAM_BOT_TOKEN_30_101=bot123:ABC
+#   TELEGRAM_USER_IDS_30_101=123456789
+#
+# 未配置对应环境变量的宿舍将不推送
+# ============================================================

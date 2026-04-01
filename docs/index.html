@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECUST 电量统计</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>⚡ ECUST 电量统计</h1>
+            <p class="subtitle">华东理工大学宿舍电量监控系统</p>
+        </header>
+
+        <!-- 宿舍选择器 -->
+        <div class="dorm-selector" id="dormSelector">
+            <!-- 动态生成 -->
+        </div>
+
+        <!-- 状态卡片 -->
+        <div class="status-card" id="statusCard">
+            <div class="status-header">
+                <span class="status-label">当前电量</span>
+                <span class="status-badge" id="statusBadge">正常</span>
+            </div>
+            <div class="status-value">
+                <span id="currentKwh">--</span>
+                <span class="unit">kWh</span>
+            </div>
+            <div class="status-info">
+                <span id="dormName">--</span>
+                <span class="divider">|</span>
+                <span id="dormLocation">--</span>
+            </div>
+            <div class="update-time">
+                更新时间：<span id="updateTime">--</span>
+            </div>
+        </div>
+
+        <!-- 图表区域 -->
+        <div class="chart-container">
+            <h2>电量趋势</h2>
+            <canvas id="electricityChart"></canvas>
+        </div>
+
+        <!-- 历史数据表格 -->
+        <div class="table-container">
+            <h2>历史记录</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>日期</th>
+                        <th>剩余电量</th>
+                        <th>变化</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTable">
+                    <!-- 动态生成 -->
+                </tbody>
+            </table>
+        </div>
+
+        <footer class="footer">
+            <p>💡 数据每日自动更新 | 如有疑问请联系管理员</p>
+        </footer>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
