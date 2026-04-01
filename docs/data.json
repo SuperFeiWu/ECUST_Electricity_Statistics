@@ -3,23 +3,37 @@
   "dormitories": [
     {
       "id": 1,
-      "name": "示例宿舍",
-      "buildid": 30,
-      "roomid": "101",
-      "warning_threshold": 10,
-      "latest_kwh": 35.5,
+      "name": "神秘528",
+      "buildid": 20,
+      "roomid": "528",
+      "warning_threshold": 10.0,
+      "latest_kwh": 91.0,
+      "latest_power": null,
       "records": [
-        {"time": "2026-03-22", "kWh": 45.2},
-        {"time": "2026-03-23", "kWh": 43.8},
-        {"time": "2026-03-24", "kWh": 42.1},
-        {"time": "2026-03-25", "kWh": 40.5},
-        {"time": "2026-03-26", "kWh": 38.9},
-        {"time": "2026-03-27", "kWh": 37.2},
-        {"time": "2026-03-28", "kWh": 36.8},
-        {"time": "2026-03-29", "kWh": 36.2},
-        {"time": "2026-03-30", "kWh": 35.9},
-        {"time": "2026-03-31", "kWh": 35.5}
-      ]
+        {
+          "time": "2026-04-01",
+          "kwh": 91.0,
+          "power": null
+        }
+      ],
+      "push_warning_only": false
+    },
+    {
+      "id": 2,
+      "name": "快乐529",
+      "buildid": 20,
+      "roomid": "529",
+      "warning_threshold": 10.0,
+      "latest_kwh": 73.0,
+      "latest_power": null,
+      "records": [
+        {
+          "time": "2026-04-01",
+          "kwh": 73.0,
+          "power": null
+        }
+      ],
+      "push_warning_only": false
     }
   ]
 }
