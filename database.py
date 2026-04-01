@@ -44,11 +44,18 @@ def init_db() -> None:
             dormitory_id INTEGER NOT NULL,
             recorded_date DATE NOT NULL,
             kwh REAL NOT NULL,
+            power REAL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (dormitory_id) REFERENCES dormitories(id),
             UNIQUE(dormitory_id, recorded_date)
         )
     """)
+
+    # 检查并添加 power 列
+    cursor.execute("PRAGMA table_info(electricity_records)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "power" not in columns:
+        cursor.execute("ALTER TABLE electricity_records ADD COLUMN power REAL")
 
     conn.commit()
     conn.close()
@@ -152,7 +159,8 @@ def get_dormitory_by_id(dormitory_id: int) -> Optional[dict]:
 def add_electricity_record(
     dormitory_id: int,
     recorded_date: str,
-    kwh: float
+    kwh: float,
+    power: float = None
 ) -> None:
     """添加或更新电量记录"""
     conn = get_connection()
@@ -160,12 +168,12 @@ def add_electricity_record(
 
     cursor.execute(
         """
-        INSERT INTO electricity_records (dormitory_id, recorded_date, kwh)
-        VALUES (?, ?, ?)
+        INSERT INTO electricity_records (dormitory_id, recorded_date, kwh, power)
+        VALUES (?, ?, ?, ?)
         ON CONFLICT(dormitory_id, recorded_date)
-        DO UPDATE SET kwh = excluded.kwh
+        DO UPDATE SET kwh = excluded.kwh, power = excluded.power
         """,
-        (dormitory_id, recorded_date, kwh)
+        (dormitory_id, recorded_date, kwh, power)
     )
 
     conn.commit()
@@ -180,16 +188,33 @@ def get_electricity_records(
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT id, dormitory_id, recorded_date, kwh, created_at
-        FROM electricity_records
-        WHERE dormitory_id = ?
-        ORDER BY recorded_date DESC
-        LIMIT ?
-        """,
-        (dormitory_id, limit)
-    )
+    # 检查是否有 power 列
+    cursor.execute("PRAGMA table_info(electricity_records)")
+    columns = [col[1] for col in cursor.fetchall()]
+    has_power = "power" in columns
+
+    if has_power:
+        cursor.execute(
+            """
+            SELECT id, dormitory_id, recorded_date, kwh, power, created_at
+            FROM electricity_records
+            WHERE dormitory_id = ?
+            ORDER BY recorded_date DESC
+            LIMIT ?
+            """,
+            (dormitory_id, limit)
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT id, dormitory_id, recorded_date, kwh, created_at
+            FROM electricity_records
+            WHERE dormitory_id = ?
+            ORDER BY recorded_date DESC
+            LIMIT ?
+            """,
+            (dormitory_id, limit)
+        )
 
     records = [dict(row) for row in cursor.fetchall()]
     conn.close()
@@ -201,16 +226,33 @@ def get_latest_record(dormitory_id: int) -> Optional[dict]:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT id, dormitory_id, recorded_date, kwh, created_at
-        FROM electricity_records
-        WHERE dormitory_id = ?
-        ORDER BY recorded_date DESC
-        LIMIT 1
-        """,
-        (dormitory_id,)
-    )
+    # 检查是否有 power 列
+    cursor.execute("PRAGMA table_info(electricity_records)")
+    columns = [col[1] for col in cursor.fetchall()]
+    has_power = "power" in columns
+
+    if has_power:
+        cursor.execute(
+            """
+            SELECT id, dormitory_id, recorded_date, kwh, power, created_at
+            FROM electricity_records
+            WHERE dormitory_id = ?
+            ORDER BY recorded_date DESC
+            LIMIT 1
+            """,
+            (dormitory_id,)
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT id, dormitory_id, recorded_date, kwh, created_at
+            FROM electricity_records
+            WHERE dormitory_id = ?
+            ORDER BY recorded_date DESC
+            LIMIT 1
+            """,
+            (dormitory_id,)
+        )
 
     row = cursor.fetchone()
     conn.close()
@@ -239,6 +281,11 @@ def export_to_json(output_path: Path, days_to_show: int = 30) -> None:
     """)
     dormitories = [dict(row) for row in cursor.fetchall()]
 
+    # 检查是否有 power 列
+    cursor.execute("PRAGMA table_info(electricity_records)")
+    record_columns = [col[1] for col in cursor.fetchall()]
+    has_power = "power" in record_columns
+
     result = {
         "updated_at": date.today().isoformat(),
         "dormitories": []
@@ -246,20 +293,33 @@ def export_to_json(output_path: Path, days_to_show: int = 30) -> None:
 
     for dorm in dormitories:
         # 获取每个宿舍的电量记录
-        cursor.execute(
-            """
-            SELECT recorded_date as time, kwh
-            FROM electricity_records
-            WHERE dormitory_id = ?
-            ORDER BY recorded_date DESC
-            LIMIT ?
-            """,
-            (dorm["id"], days_to_show)
-        )
+        if has_power:
+            cursor.execute(
+                """
+                SELECT recorded_date as time, kwh, power
+                FROM electricity_records
+                WHERE dormitory_id = ?
+                ORDER BY recorded_date DESC
+                LIMIT ?
+                """,
+                (dorm["id"], days_to_show)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT recorded_date as time, kwh
+                FROM electricity_records
+                WHERE dormitory_id = ?
+                ORDER BY recorded_date DESC
+                LIMIT ?
+                """,
+                (dorm["id"], days_to_show)
+            )
         records = [dict(row) for row in cursor.fetchall()]
 
-        # 获取最新电量
+        # 获取最新电量和功率
         latest_kwh = records[0]["kwh"] if records else None
+        latest_power = records[0]["power"] if records and has_power else None
 
         dorm_data = {
             "id": dorm["id"],
@@ -268,6 +328,7 @@ def export_to_json(output_path: Path, days_to_show: int = 30) -> None:
             "roomid": dorm["roomid"],
             "warning_threshold": dorm["warning_threshold"],
             "latest_kwh": latest_kwh,
+            "latest_power": latest_power,
             "records": list(reversed(records))  # 按时间升序
         }
 

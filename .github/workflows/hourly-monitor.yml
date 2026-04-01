@@ -1,0 +1,39 @@
+name: Hourly Monitor
+
+on:
+  schedule:
+    # 每小时运行一次
+    - cron: '0 * * * *'
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  hourly-monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests telegramify-markdown
+
+      - name: Run hourly monitor
+        env:
+          RUN_MODE: monitor
+          GITHUB_TRIGGERING_ACTOR: ${{ github.actor }}
+          # 宿舍 20-528
+          PUSH_PLUS_TOKEN_20_528: ${{ secrets.PUSH_PLUS_TOKEN_20_528 }}
+          TELEGRAM_BOT_TOKEN_20_528: ${{ secrets.TELEGRAM_BOT_TOKEN_20_528 }}
+          TELEGRAM_USER_IDS_20_528: ${{ secrets.TELEGRAM_USER_IDS_20_528 }}
+          # 宿舍 20-529
+          PUSH_PLUS_TOKEN_20_529: ${{ secrets.PUSH_PLUS_TOKEN_20_529 }}
+          TELEGRAM_BOT_TOKEN_20_529: ${{ secrets.TELEGRAM_BOT_TOKEN_20_529 }}
+          TELEGRAM_USER_IDS_20_529: ${{ secrets.TELEGRAM_USER_IDS_20_529 }}
+        run: python main.py

@@ -169,6 +169,28 @@ body {
     color: var(--text-secondary);
 }
 
+/* Power Info */
+.power-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: rgba(59, 130, 246, 0.1);
+    border-radius: 8px;
+}
+
+.power-label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.power-value {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
 /* Chart Container */
 .chart-container {
     background: var(--card-bg);

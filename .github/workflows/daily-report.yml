@@ -1,0 +1,47 @@
+name: Daily Report
+
+on:
+  schedule:
+    # 中国大陆时间上午10点 (UTC+8 = UTC 02:00)
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  daily-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests telegramify-markdown
+
+      - name: Run daily report
+        env:
+          RUN_MODE: report
+          GITHUB_TRIGGERING_ACTOR: ${{ github.actor }}
+          # 宿舍 20-528
+          PUSH_PLUS_TOKEN_20_528: ${{ secrets.PUSH_PLUS_TOKEN_20_528 }}
+          TELEGRAM_BOT_TOKEN_20_528: ${{ secrets.TELEGRAM_BOT_TOKEN_20_528 }}
+          TELEGRAM_USER_IDS_20_528: ${{ secrets.TELEGRAM_USER_IDS_20_528 }}
+          # 宿舍 20-529
+          PUSH_PLUS_TOKEN_20_529: ${{ secrets.PUSH_PLUS_TOKEN_20_529 }}
+          TELEGRAM_BOT_TOKEN_20_529: ${{ secrets.TELEGRAM_BOT_TOKEN_20_529 }}
+          TELEGRAM_USER_IDS_20_529: ${{ secrets.TELEGRAM_USER_IDS_20_529 }}
+        run: python main.py
+
+      - name: Commit and push data
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -f docs/data.json electricity.db
+          git diff --quiet && git diff --staged --quiet || git commit -m "📊 更新电量数据 $(date '+%Y-%m-%d')"
+          git push

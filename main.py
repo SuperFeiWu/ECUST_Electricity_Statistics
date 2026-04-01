@@ -27,6 +27,8 @@ from database import (
 # 环境变量配置
 DEBUG = os.environ.get("DEBUG", os.environ.get("debug", "")).strip()
 GITHUB_TRIGGERING_ACTOR = os.environ.get("GITHUB_TRIGGERING_ACTOR", "").strip()
+# 运行模式: report (日报) 或 monitor (监控)
+RUN_MODE = os.environ.get("RUN_MODE", "report").strip().lower()
 
 # 加载配置
 config = tomllib.loads(Path("config.toml").read_text(encoding="utf-8"))
@@ -91,20 +93,49 @@ def build_url(buildid: int, roomid: str) -> str:
     return f"https://yktyd.ecust.edu.cn/WxRes.aspx?buildid={buildid}&roomid={roomid}"
 
 
-def fetch_electricity(buildid: int, roomid: str) -> Optional[float]:
-    """获取电量数据"""
-    url = build_url(buildid, roomid)
+def fetch_electricity(buildid: int, roomid: str, url_override: str = None) -> tuple[Optional[float], Optional[float]]:
+    """
+    获取电量数据和功率
+
+    Returns:
+        tuple: (剩余电量 kWh, 功率 kW)
+    """
+    if url_override:
+        url = url_override
+    else:
+        url = build_url(buildid, roomid)
     headers = get_headers()
 
     try:
         response = requests.get(url, headers=headers)
-        remain = float(re.findall(r"(-?\d+(\.\d+)?)度", response.text)[0][0])
-        logging.info(f"宿舍 {buildid}-{roomid} 剩余电量：{remain} kWh")
-        return remain
+        text = response.text
+
+        # 解析剩余电量
+        remain_match = re.findall(r"(-?\d+(\.\d+)?)度", text)
+        if not remain_match:
+            logging.error(f"无法解析电量，buildid={buildid}, roomid={roomid}")
+            return None, None
+
+        remain = float(remain_match[0][0])
+
+        # 解析功率 (常见格式：功率：1.23kW 或 功率:1.23kW)
+        power = None
+        power_match = re.search(r"功率[：:]\s*(-?\d+(\.\d+)?)\s*[kK][wW]", text)
+        if power_match:
+            power = float(power_match.group(1))
+
+        # 功率异常检测（负值或过大的值视为异常）
+        if power is not None and (power < 0 or power > 100):
+            logging.warning(f"功率异常: {power} kW，标记为无数据")
+            power = None
+
+        logging.info(f"宿舍 {buildid}-{roomid} 剩余电量：{remain} kWh, 功率：{power if power else '无数据'} kW")
+        return remain, power
+
     except Exception as e:
         logging.exception(e)
         logging.error(f"获取电量失败，buildid={buildid}, roomid={roomid}, response: {response.text}")
-        return None
+        return None, None
 
 
 def generate_tablestr(records: list[dict]) -> str:
@@ -119,21 +150,16 @@ def generate_tablestr(records: list[dict]) -> str:
 def generate_message(
     dorm: dict,
     records: list[dict],
-    latest_kwh: float
+    latest_kwh: float,
+    latest_power: float = None,
+    is_warning: bool = False
 ) -> Optional[str]:
     """生成推送消息 - 东雪莲风格中日双语"""
-    if not records:
-        logging.info("没有历史记录，跳过推送")
-        return None
-
-    records_to_show = records[:DEFAULT_DAYS_TO_SHOW]
-
     text: list[str] = []
     warning_threshold = dorm.get("warning_threshold", DEFAULT_WARNING)
-    push_warning_only = dorm.get("push_warning_only", DEFAULT_PUSH_WARNING_ONLY)
 
-    # 低电量警告
-    if warning_threshold > latest_kwh:
+    # 标题
+    if is_warning:
         text.append(
             f"""# <text style="color:red;">⚠️ 電力不足警告 / 电量不足警告</text>\n"""
         )
@@ -142,26 +168,38 @@ def generate_message(
             f"> 剩余电量已低于阈值 ({latest_kwh}kWh < {warning_threshold}kWh)\n"
         )
     else:
-        if push_warning_only and not DEBUG:
-            logging.info("电量充足，跳过推送")
-            return None
+        text.append(f"# 📊 電力使用状況レポート / 电量使用报告\n")
 
-    tablestr = generate_tablestr(records_to_show)
-    building_num = building_number_map(dorm["buildid"])
-
+    # 当前电量和功率
+    power_str = f"{latest_power:.2f} kW" if latest_power is not None else "データなし / 无数据"
     text.extend([
         f"## 💡 現在の残り電力量 / 当前剩余电量\n",
         f"**{latest_kwh} kWh**",
         "",
+        f"### ⚡ 現在の消費電力 / 当前功率",
+        f"**{power_str}**",
+        "",
+    ])
+
+    # 宿舍信息
+    building_num = building_number_map(dorm["buildid"])
+    text.extend([
         f"📍 **宿舍情報 / 宿舍信息**",
         f"- {dorm['name']} ({building_num} 号楼 {dorm['roomid']} 室)",
         f"- 更新日時 / 更新时间：{get_date()}",
         "",
-        f"### 📊 過去{len(records_to_show)}日間のデータ / 最近{len(records_to_show)}天数据",
-        "",
-        f"{tablestr}",
-        "",
     ])
+
+    # 历史数据（仅在 report 模式下显示）
+    if records and RUN_MODE == "report":
+        records_to_show = records[:DEFAULT_DAYS_TO_SHOW]
+        tablestr = generate_tablestr(records_to_show)
+        text.extend([
+            f"### 📈 過去{len(records_to_show)}日間のデータ / 最近{len(records_to_show)}天数据",
+            "",
+            f"{tablestr}",
+            "",
+        ])
 
     if GITHUB_TRIGGERING_ACTOR:
         text.append(
@@ -237,12 +275,14 @@ def parse_dormitory_config(dorm_config: dict) -> dict:
         "name": dorm_config["name"],
         "buildid": None,
         "roomid": None,
+        "url": None,
         "warning_threshold": dorm_config.get("warning_threshold", DEFAULT_WARNING),
         "push_warning_only": dorm_config.get("push_warning_only", DEFAULT_PUSH_WARNING_ONLY),
     }
 
     # 方式一：从 URL 解析
     if "url" in dorm_config:
+        result["url"] = dorm_config["url"]
         parsed = urlparse(dorm_config["url"])
         params = parse_qs(parsed.query)
         result["buildid"] = int(params.get("buildid", [None])[0])
@@ -269,59 +309,80 @@ def process_dormitory(dorm_config: dict) -> None:
         logging.error(str(e))
         return
 
-    # 添加或获取宿舍
-    dormitory_id = add_dormitory(
-        name=parsed_config["name"],
-        buildid=parsed_config["buildid"],
-        roomid=parsed_config["roomid"],
-        warning_threshold=parsed_config["warning_threshold"],
-        push_warning_only=parsed_config["push_warning_only"],
-    )
+    buildid = parsed_config["buildid"]
+    roomid = parsed_config["roomid"]
+    url = parsed_config.get("url")
 
-    # 获取电量
-    kwh = fetch_electricity(parsed_config["buildid"], parsed_config["roomid"])
+    # 获取电量和功率
+    kwh, power = fetch_electricity(buildid, roomid, url)
     if kwh is None:
         logging.error(f"宿舍 {parsed_config['name']} 电量获取失败")
         return
 
-    # 保存记录
-    add_electricity_record(dormitory_id, get_date(), kwh)
+    # 获取宿舍信息
+    dormitory_id = add_dormitory(
+        name=parsed_config["name"],
+        buildid=buildid,
+        roomid=roomid,
+        warning_threshold=parsed_config["warning_threshold"],
+        push_warning_only=parsed_config["push_warning_only"],
+    )
+
+    warning_threshold = parsed_config["warning_threshold"]
+    is_low_power = kwh < warning_threshold
 
     # 获取历史记录
     records = get_electricity_records(dormitory_id, DEFAULT_DAYS_TO_SHOW)
-    # 转换为兼容格式
     records_compat = [{"time": r["recorded_date"], "kWh": r["kwh"]} for r in records]
 
-    # 生成消息
+    # 获取宿舍信息
     dorm_info = get_all_dormitories()
     current_dorm = next((d for d in dorm_info if d["id"] == dormitory_id), None)
 
     if not current_dorm:
         return
 
-    message = generate_message(current_dorm, records_compat, kwh)
+    # 根据运行模式决定行为
+    if RUN_MODE == "report":
+        # 日报模式：保存数据并推送
+        add_electricity_record(dormitory_id, get_date(), kwh, power)
 
-    # 根据 buildid 和 roomid 从环境变量获取专属 token
-    buildid = parsed_config["buildid"]
-    roomid = parsed_config["roomid"]
+        # 生成消息
+        message = generate_message(current_dorm, records_compat, kwh, power, is_warning=is_low_power)
 
-    # PushPlus Token: PUSH_PLUS_TOKEN_{BUILDID}_{ROOMID}
-    push_plus_token = os.environ.get(f"PUSH_PLUS_TOKEN_{buildid}_{roomid}", "").strip()
+        # 推送
+        push_plus_token = os.environ.get(f"PUSH_PLUS_TOKEN_{buildid}_{roomid}", "").strip()
+        telegram_bot_token = os.environ.get(f"TELEGRAM_BOT_TOKEN_{buildid}_{roomid}", "").strip()
+        telegram_users_str = os.environ.get(f"TELEGRAM_USER_IDS_{buildid}_{roomid}", "").strip()
+        telegram_user_ids = telegram_users_str.split() if telegram_users_str else []
 
-    # Telegram: TELEGRAM_BOT_TOKEN_{BUILDID}_{ROOMID} 和 TELEGRAM_USER_IDS_{BUILDID}_{ROOMID}
-    telegram_bot_token = os.environ.get(f"TELEGRAM_BOT_TOKEN_{buildid}_{roomid}", "").strip()
-    telegram_users_str = os.environ.get(f"TELEGRAM_USER_IDS_{buildid}_{roomid}", "").strip()
-    telegram_user_ids = telegram_users_str.split() if telegram_users_str else []
+        if push_plus_token:
+            pushplus(message, push_plus_token)
+        if telegram_bot_token and telegram_user_ids:
+            telegram(message, telegram_bot_token, telegram_user_ids)
 
-    # 推送（仅在配置了 token 时才推送）
-    if push_plus_token:
-        pushplus(message, push_plus_token)
-    if telegram_bot_token and telegram_user_ids:
-        telegram(message, telegram_bot_token, telegram_user_ids)
+    elif RUN_MODE == "monitor":
+        # 监控模式：仅在电量不足时报警
+        if is_low_power:
+            message = generate_message(current_dorm, records_compat, kwh, power, is_warning=True)
+
+            push_plus_token = os.environ.get(f"PUSH_PLUS_TOKEN_{buildid}_{roomid}", "").strip()
+            telegram_bot_token = os.environ.get(f"TELEGRAM_BOT_TOKEN_{buildid}_{roomid}", "").strip()
+            telegram_users_str = os.environ.get(f"TELEGRAM_USER_IDS_{buildid}_{roomid}", "").strip()
+            telegram_user_ids = telegram_users_str.split() if telegram_users_str else []
+
+            if push_plus_token:
+                pushplus(message, push_plus_token)
+            if telegram_bot_token and telegram_user_ids:
+                telegram(message, telegram_bot_token, telegram_user_ids)
+        else:
+            logging.info(f"宿舍 {parsed_config['name']} 电量充足 ({kwh} kWh)，跳过报警")
 
 
 def main():
     """主函数"""
+    logging.info(f"运行模式: {RUN_MODE}")
+
     # 初始化数据库
     init_db()
 
@@ -337,10 +398,11 @@ def main():
         logging.info(f"处理宿舍: {dorm_config.get('name', '未命名')}")
         process_dormitory(dorm_config)
 
-    # 导出数据供前端使用
-    output_path = Path("docs/data.json")
-    export_to_json(output_path, DEFAULT_DAYS_TO_SHOW)
-    logging.info(f"数据已导出到 {output_path}")
+    # 仅在 report 模式下导出数据
+    if RUN_MODE == "report":
+        output_path = Path("docs/data.json")
+        export_to_json(output_path, DEFAULT_DAYS_TO_SHOW)
+        logging.info(f"数据已导出到 {output_path}")
 
 
 if __name__ == "__main__":

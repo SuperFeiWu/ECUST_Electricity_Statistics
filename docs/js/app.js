@@ -76,6 +76,7 @@ function updateDisplay() {
     if (!dorm) return;
 
     const latestKwh = dorm.latest_kwh;
+    const latestPower = dorm.latest_power;
     const threshold = dorm.warning_threshold;
     const records = dorm.records;
 
@@ -85,6 +86,15 @@ function updateDisplay() {
     statusBadge.className = `status-badge ${getStatusClass(latestKwh, threshold)}`;
 
     document.getElementById('currentKwh').textContent = latestKwh.toFixed(1);
+
+    // 更新功率显示
+    const powerElement = document.getElementById('currentPower');
+    if (latestPower !== null && latestPower !== undefined) {
+        powerElement.textContent = `${latestPower.toFixed(2)} kW`;
+    } else {
+        powerElement.textContent = '无数据';
+    }
+
     document.getElementById('dormName').textContent = dorm.name;
     document.getElementById('dormLocation').textContent =
         `${buildingNumberMap(dorm.buildid)}号楼 ${dorm.roomid}室`;
